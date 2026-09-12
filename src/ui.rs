@@ -3,9 +3,10 @@ use libadwaita::prelude::*;
 use libadwaita as adw;
 use gtk4 as gtk;
 use gtk::glib;
+use std::sync::mpsc::channel;
 use crate::checker::{scan_system_updates, UpdateReport};
 use crate::theme::OmarchyColors;
-use crate::runner::launch_update_in_terminal;
+use crate::runner::{run_embedded_update, UpdateEvent};
 
 pub fn build_ui(app: &adw::Application) {
     let colors = OmarchyColors::load_current();
@@ -24,8 +25,8 @@ pub fn build_ui(app: &adw::Application) {
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("Omarchy System Updates")
-        .default_width(680)
-        .default_height(580)
+        .default_width(720)
+        .default_height(620)
         .build();
 
     window.add_css_class("omarchy-updater");
@@ -41,17 +42,17 @@ pub fn build_ui(app: &adw::Application) {
     header.pack_end(&refresh_btn);
     main_box.append(&header);
 
-    // Scrolled window for content
+    // Scrolled window for main content
     let scrolled = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
 
     let content_box = gtk::Box::new(gtk::Orientation::Vertical, 16);
-    content_box.set_margin_top(24);
-    content_box.set_margin_bottom(24);
-    content_box.set_margin_start(24);
-    content_box.set_margin_end(24);
+    content_box.set_margin_top(20);
+    content_box.set_margin_bottom(20);
+    content_box.set_margin_start(20);
+    content_box.set_margin_end(20);
 
     // Banner card
     let banner_card = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -88,8 +89,8 @@ pub fn build_ui(app: &adw::Application) {
 
     content_box.append(&banner_card);
 
-    // Action button area
-    let action_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    // Action button & progress area
+    let action_box = gtk::Box::new(gtk::Orientation::Vertical, 10);
     action_box.set_halign(gtk::Align::Center);
 
     let update_btn = gtk::Button::builder()
@@ -98,7 +99,13 @@ pub fn build_ui(app: &adw::Application) {
         .sensitive(false)
         .build();
 
+    let spinner = gtk::Spinner::builder()
+        .spinning(false)
+        .visible(false)
+        .build();
+
     action_box.append(&update_btn);
+    action_box.append(&spinner);
     content_box.append(&action_box);
 
     // Preferences Groups for details
@@ -153,6 +160,31 @@ pub fn build_ui(app: &adw::Application) {
     details_group.add(&mise_row);
 
     content_box.append(&details_group);
+
+    // Embedded Terminal / Live Log Console (expandable)
+    let log_expander = adw::ExpanderRow::builder()
+        .title("Update Logs & Details")
+        .subtitle("Live progress output from omarchy update")
+        .expanded(false)
+        .build();
+
+    let text_view = gtk::TextView::builder()
+        .editable(false)
+        .cursor_visible(false)
+        .monospace(true)
+        .wrap_mode(gtk::WrapMode::WordChar)
+        .css_classes(["log-terminal"])
+        .build();
+
+    let log_scrolled = gtk::ScrolledWindow::builder()
+        .min_content_height(200)
+        .max_content_height(350)
+        .child(&text_view)
+        .build();
+
+    log_expander.add_row(&log_scrolled);
+    content_box.append(&log_expander);
+
     scrolled.set_child(Some(&content_box));
     main_box.append(&scrolled);
     window.set_content(Some(&main_box));
@@ -253,19 +285,58 @@ pub fn build_ui(app: &adw::Application) {
         });
     }
 
-    // Connect Update Now button
+    // Connect Update Now button (embedded pkexec runner with live logs)
     {
-        let window_clone = window.clone();
+        let update_btn_clone = update_btn.clone();
+        let spinner_clone = spinner.clone();
+        let status_badge_clone = status_badge.clone();
+        let log_expander_clone = log_expander.clone();
+        let text_view_clone = text_view.clone();
+        let trigger_check_clone = trigger_check.clone();
+
         update_btn.connect_clicked(move |_| {
-            if let Err(e) = launch_update_in_terminal() {
-                let dialog = adw::MessageDialog::builder()
-                    .transient_for(&window_clone)
-                    .heading("Update Error")
-                    .body(&e)
-                    .build();
-                dialog.add_response("ok", "OK");
-                dialog.present();
-            }
+            update_btn_clone.set_sensitive(false);
+            spinner_clone.set_visible(true);
+            spinner_clone.start();
+            status_badge_clone.set_label("Applying updates...");
+            log_expander_clone.set_expanded(true);
+
+            let buffer = text_view_clone.buffer();
+            buffer.set_text("");
+
+            let (tx, rx) = channel::<UpdateEvent>();
+            run_embedded_update(tx);
+
+            let buffer_clone = buffer.clone();
+            let spinner_done = spinner_clone.clone();
+            let badge_done = status_badge_clone.clone();
+            let trigger_done = trigger_check_clone.clone();
+
+            glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                let mut should_continue = true;
+                while let Ok(event) = rx.try_recv() {
+                    match event {
+                        UpdateEvent::Log(msg) => {
+                            let mut end_iter = buffer_clone.end_iter();
+                            buffer_clone.insert(&mut end_iter, &msg);
+                        }
+                        UpdateEvent::Finished(success) => {
+                            spinner_done.stop();
+                            spinner_done.set_visible(false);
+                            if success {
+                                badge_done.set_label("✓ Update Complete");
+                                badge_done.remove_css_class("badge-updates-available");
+                                badge_done.add_css_class("badge-up-to-date");
+                            } else {
+                                badge_done.set_label("⚠ Update Interrupted or Cancelled");
+                            }
+                            trigger_done();
+                            should_continue = false;
+                        }
+                    }
+                }
+                glib::ControlFlow::from(should_continue)
+            });
         });
     }
 
