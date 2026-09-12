@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Default, Clone)]
+#[allow(dead_code)]
 pub struct OmarchyColors {
     pub mode: Option<String>,
     pub accent: Option<String>,
@@ -57,7 +58,7 @@ impl OmarchyColors {
         let accent = self.accent.as_deref().unwrap_or("#316ac5");
         let muted = self.muted.as_deref().unwrap_or("#8aaee0");
         let green = self.green.as_deref().unwrap_or("#38a169");
-        let red = self.red.as_deref().unwrap_or("#e53e3e");
+        let _red = self.red.as_deref().unwrap_or("#e53e3e");
 
         format!(
             r#"
