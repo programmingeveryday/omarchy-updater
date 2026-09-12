@@ -8,7 +8,7 @@ A beautiful, native GTK4 & Libadwaita graphical application designed specificall
 
 - **🎨 Native Omarchy Aesthetic:**
   - Dynamically parses the active theme configuration (`~/.local/state/omarchy/current/theme/colors.toml`).
-  - Seamlessly adapts window backgrounds, cards, typography, and status badges to your active desktop theme (Light & Dark mode support).
+  - Seamlessly adapts window backgrounds, cards, typography, and status badges to your active desktop theme (supports all light and dark Omarchy themes).
 - **🔍 Comprehensive Subsystem Inspection:**
   - **Arch Linux Repositories:** Scans official updates safely using `checkupdates`.
   - **AUR (Arch User Repository):** Scans AUR packages using `yay -Qua`.
@@ -19,47 +19,64 @@ A beautiful, native GTK4 & Libadwaita graphical application designed specificall
   - Prominent update action that triggers when any updates are pending.
   - Automatically launches the complete Omarchy update workflow within a native terminal (Ghostty/Foot) for secure privilege escalation (sudo / biometric authentication) and real-time migration logs.
 - **🪟 Hyprland Ready:**
-  - Pre-configured to launch centered as a floating window rather than tiling, fitting right into your workflow.
+  - Automatically opens centered as a floating window rather than tiling.
 - **🔄 Live Refresh:**
   - Dedicated refresh button in the header bar to re-scan all repositories on demand.
 
 ---
 
-## 🚀 Installation & Setup
+## 🚀 Quick Install (Recommended)
 
-### Pre-built Binary (GitHub Releases)
-Download the latest `omarchy-updater-linux-x86_64.tar.gz` from the [Releases](https://github.com/programmingeveryday/omarchy-updater/releases) page:
+You can install `omarchy-updater` in one command:
 
 ```bash
-tar -xzvf omarchy-updater-linux-x86_64.tar.gz
-install -Dm755 bin/omarchy-updater ~/.local/bin/omarchy-updater
-install -Dm644 share/applications/omarchy-updater.desktop ~/.local/share/applications/omarchy-updater.desktop
+curl -sSL https://raw.githubusercontent.com/programmingeveryday/omarchy-updater/main/install.sh | bash
 ```
 
-### Build from Source
+### What this script does automatically:
+1. Downloads the latest pre-compiled release binary and desktop icon.
+2. Installs the executable to `~/.local/bin/omarchy-updater`.
+3. Registers the desktop launcher in `~/.local/share/applications/` so it appears in your Omarchy `Super` menu.
+4. Adds the floating and centered window rule to your `~/.config/hypr/hyprland.lua` (if not already present) and reloads Hyprland.
 
-Ensure you have Rust and the GTK4 / Libadwaita libraries installed:
+---
+
+## 📦 Manual Installation from Release Archive
+
+1. Download `omarchy-updater-linux-x86_64.tar.gz` from the [Releases](https://github.com/programmingeveryday/omarchy-updater/releases) page.
+2. Extract the archive and run the included installer:
 
 ```bash
-# Clone the repository
-git clone https://github.com/programmingeveryday/omarchy-updater.git
-cd omarchy-updater
-
-# Build optimized release binary
-cargo build --release
-
-# Install locally
-install -Dm755 target/release/omarchy-updater ~/.local/bin/omarchy-updater
-install -Dm644 extra/omarchy-updater.desktop ~/.local/share/applications/omarchy-updater.desktop
+tar -xzf omarchy-updater-linux-x86_64.tar.gz
+./install.sh
 ```
 
 ---
 
-## 🪟 Hyprland Configuration
+## 🔨 Build from Source
 
-To have `omarchy-updater` open centered and floating automatically under Hyprland, add the following window rule to `~/.config/hypr/hyprland.lua`:
+If you prefer compiling directly from source:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/programmingeveryday/omarchy-updater.git
+cd omarchy-updater
+
+# 2. Build the optimized release binary
+cargo build --release
+
+# 3. Run the installer
+./install.sh
+```
+
+---
+
+## 🪟 Hyprland Configuration (Manual)
+
+The installer configures this automatically, but if you want to set it up manually in `~/.config/hypr/hyprland.lua`:
 
 ```lua
+-- Omarchy System Updates floating window rule
 o.window("org.omarchy.updater", { float = true, center = true, size = { 720, 620 } })
 ```
 

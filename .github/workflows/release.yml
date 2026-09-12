@@ -61,6 +61,7 @@ jobs:
           mkdir -p release-pkg/bin release-pkg/share/applications
           cp target/release/omarchy-updater release-pkg/bin/
           cp extra/omarchy-updater.desktop release-pkg/share/applications/
+          cp install.sh release-pkg/
           tar -czvf omarchy-updater-linux-x86_64.tar.gz -C release-pkg .
 
       - name: Upload build artifact
