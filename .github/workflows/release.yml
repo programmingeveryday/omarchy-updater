@@ -2,22 +2,41 @@ name: Build & Release
 
 on:
   push:
-    tags:
-      - 'v*'
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
-    name: Build Linux x86_64 Binary
+    name: Build & Publish Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Version Tag
+        id: vars
+        run: |
+          if [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            # Extract base version from Cargo.toml
+            BASE_VER=$(grep '^version' Cargo.toml | head -n1 | cut -d '"' -f 2)
+            # Create a unique incremental tag using run number: e.g. v0.1.0-build.12
+            TAG="v${BASE_VER}-build.${{ github.run_number }}"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building release for tag: $TAG"
 
       - name: Install system dependencies
         run: |
@@ -50,9 +69,21 @@ jobs:
           name: omarchy-updater-linux-x86_64
           path: omarchy-updater-linux-x86_64.tar.gz
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create Git Tag (for main branch push)
+        if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.vars.outputs.TAG }}"
+          git push origin "${{ steps.vars.outputs.TAG }}"
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.vars.outputs.TAG }}
+          name: Release ${{ steps.vars.outputs.TAG }}
           files: omarchy-updater-linux-x86_64.tar.gz
           generate_release_notes: true
+          draft: false
+          prerelease: false
