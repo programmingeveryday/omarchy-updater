@@ -1,0 +1,58 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Linux x86_64 Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            pkg-config \
+            build-essential
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Package release archive
+        run: |
+          mkdir -p release-pkg/bin release-pkg/share/applications
+          cp target/release/omarchy-updater release-pkg/bin/
+          cp extra/omarchy-updater.desktop release-pkg/share/applications/
+          tar -czvf omarchy-updater-linux-x86_64.tar.gz -C release-pkg .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omarchy-updater-linux-x86_64
+          path: omarchy-updater-linux-x86_64.tar.gz
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: omarchy-updater-linux-x86_64.tar.gz
+          generate_release_notes: true
