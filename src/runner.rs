@@ -4,17 +4,28 @@ use std::sync::mpsc::Sender;
 
 pub enum UpdateEvent {
     Log(String),
-    Finished(bool), // true = success, false = failure
+    Finished(bool),
 }
 
 pub fn run_embedded_update(tx: Sender<UpdateEvent>) {
     std::thread::spawn(move || {
-        let _ = tx.send(UpdateEvent::Log("Requesting authentication & starting Omarchy update...\n".to_string()));
+        let _ = tx.send(UpdateEvent::Log("Starting Omarchy update...\n".to_string()));
 
-        // Run omarchy update using pkexec so Omarchy's native Polkit agent
-        // presents the GUI fingerprint / password prompt.
-        let mut child = match Command::new("pkexec")
-            .args(["omarchy", "update", "-y"])
+        // Run as the current user, passing sudo inside the command.
+        // We use pkexec to cache the sudo credentials upfront if needed, OR
+        // we run bash -c with environment configured.
+        // Because omarchy update executes migrations, yay (AUR), mise, and user hooks,
+        // running the root updater under pkexec as root directly broke $HOME and $OMARCHY_PATH.
+        // Instead, we invoke:
+        // pkexec --user root env OMARCHY_PATH=/usr/share/omarchy /usr/share/omarchy/bin/omarchy-update -y
+        let script = r#"
+            export OMARCHY_PATH=/usr/share/omarchy
+            export OMARCHY_UPDATE_UNATTENDED=1
+            pkexec env OMARCHY_PATH=/usr/share/omarchy /usr/share/omarchy/bin/omarchy-update -y
+        "#;
+
+        let mut child = match Command::new("bash")
+            .args(["-c", script])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -30,7 +41,6 @@ pub fn run_embedded_update(tx: Sender<UpdateEvent>) {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        // Spawn thread for stdout
         let tx_stdout = tx.clone();
         let handle_stdout = std::thread::spawn(move || {
             if let Some(out) = stdout {
@@ -43,7 +53,6 @@ pub fn run_embedded_update(tx: Sender<UpdateEvent>) {
             }
         });
 
-        // Spawn thread for stderr
         let tx_stderr = tx.clone();
         let handle_stderr = std::thread::spawn(move || {
             if let Some(err) = stderr {
@@ -65,7 +74,7 @@ pub fn run_embedded_update(tx: Sender<UpdateEvent>) {
                 if success {
                     let _ = tx.send(UpdateEvent::Log("\n✓ System update completed successfully!\n".to_string()));
                 } else {
-                    let _ = tx.send(UpdateEvent::Log(format!("\n⚠ Update exited with code: {:?}\n", status.code())));
+                    let _ = tx.send(UpdateEvent::Log(format!("\n⚠ Update process finished (code: {:?})\n", status.code())));
                 }
                 let _ = tx.send(UpdateEvent::Finished(success));
             }
